@@ -105,24 +105,26 @@ const PROFILE = {
 };
 
 const START = Date.UTC(2024, 5, 1);
-const END = Date.UTC(2026, 5, 30);
+const END = Date.UTC(2026, 7, 31);
 const ymd = (t) => new Date(t).toISOString().slice(0, 10);
 const ym = (t) => new Date(t).toISOString().slice(0, 7);
 
-// Held cards and their share of spend. A first no-fee card, a dining and
-// grocery card, and one travel card is a realistic set at this age -- not an
-// eleven card premium portfolio.
-const SPEND_WEIGHTS = { freedom: 0.36, gold: 0.44, ventx: 0.20 };
+// Held cards and their share of spend. Both premium cards are held so the
+// perks view has something substantial to track -- between them they carry the
+// dining, rideshare, streaming, retail and travel credits the app exists to
+// monitor. Their combined annual fees deliberately outrun what this level of
+// spend earns back, which is the trade-off the dashboard is built to surface.
+const SPEND_WEIGHTS = { gold: 0.30, csr: 0.22, freedom: 0.20, plat: 0.16, ventx: 0.12 };
 
 // Invented portfolio timeline. Replaces the real open and renewal history.
 const HELD = {
   freedom: { applied: '2024-04-18', renewal: null,         note: 'First card in this sample portfolio. No annual fee.' },
   gold:    { applied: '2025-01-22', renewal: '2027-01-31', note: '4x on restaurants, food delivery and groceries, the largest categories here.' },
   ventx:   { applied: '2025-09-05', renewal: '2027-09-30', note: 'Travel card carrying the annual portal credit.' },
+  csr:     { applied: '2026-04-10', renewal: '2027-04-30', subStart: '2026-04-10', note: 'Opened most recently in this sample; its signup bonus is still in progress.' },
+  plat:    { applied: '2025-11-08', renewal: '2027-11-30', note: 'Weak earn rate at this spend level; the case for it rests entirely on clearing the statement credits.' },
 };
 const CONSIDERING_NOTE = {
-  csr: 'Premium travel card, evaluated against its annual fee.',
-  plat: 'High annual fee offset by statement credits rather than earn rate.',
   ink: 'Business card, not applicable to this sample profile.',
   inkcash: 'Business card, not applicable to this sample profile.',
   inkpref: 'Business card, not applicable to this sample profile.',
@@ -135,13 +137,14 @@ const CONSIDERING_NOTE = {
 // and carried the same personal annotations. Scrub both copies or the notes
 // survive in the shipped page.
 const SCRUB = [
-  [/"Highest-value card you hold\.?"/g, '"Premium travel card in this sample portfolio."'],
-  [/"NEXT CARD\.[^"]*"/g, '"Airline card evaluated for its companion benefit."'],
-  [/"CSV provided[^"]*"/g, '"Sample portfolio card."'],
-  [/"Working toward \$3k[^"]*"/g, '"Signup bonus spend in progress in this sample."'],
-  [/"Downgrade target[^"]*"/g, '"No-annual-fee option in the same points ecosystem."'],
-  [/"AF \$895[^"]*"/g, '"High annual fee offset by statement credits."'],
-  [/"added from Excel"/g, '"Imported card"'],
+  [/"Highest-value card you hold\.?"/gi, '"Premium travel card in this sample portfolio."'],
+  [/"NEXT CARD\.[^"]*"/gi, '"Airline card evaluated for its companion benefit."'],
+  [/"CSV provided[^"]*"/gi, '"Sample portfolio card."'],
+  [/"Working toward \$3k[^"]*"/gi, '"Signup bonus spend in progress in this sample."'],
+  [/"Downgrade target[^"]*"/gi, '"No-annual-fee option in the same points ecosystem."'],
+  [/"AF \$895[^"]*"/gi, '"High annual fee offset by statement credits."'],
+  [/"No-AF UR keeper[^"]*"/gi, '"No-annual-fee option in the same points ecosystem."'],
+  [/"added from Excel"/gi, '"Imported card"'],
   [/\/\/ pre-loaded from [^\n]*/g, '// fabricated demo data - see tools/make-demo-data.mjs'],
 ];
 
@@ -214,6 +217,8 @@ function synthDetectedCredits(cards) {
   const out = {};
   for (const c of cards) {
     if (!HELD[c.id]) continue;
+    const opened = HELD[c.id].applied || '';
+    const since = recent.filter((m) => m >= opened.slice(0, 7));
     const bag = {};
     for (const k of c.credits || []) {
       if (!k.match) continue;
@@ -222,14 +227,15 @@ function synthDetectedCredits(cards) {
       const hits = {};
       if (k.cadence === 'monthly') {
         const per = Math.round((target / 12) * 100) / 100;
-        for (const m of recent) if (rand() < 0.72) hits[m] = per;
+        for (const m of since) if (rand() < 0.72) hits[m] = per;
       } else if (k.cadence === 'semiannual') {
-        for (const m of [recent[2], recent[8]]) if (m) hits[m] = Math.round((target / 2) * 100) / 100;
+        for (const m of [since[2], since[Math.min(8, since.length - 1)]]) if (m) hits[m] = Math.round((target / 2) * 100) / 100;
       } else {
-        const m = recent[Math.floor(rand() * recent.length)];
+        if (!since.length) continue;
+        const m = since[Math.floor(rand() * since.length)];
         const first = Math.round(target * between(0.45, 0.75) * 100) / 100;
         hits[m] = first;
-        const m2 = recent[Math.floor(rand() * recent.length)];
+        const m2 = since[Math.floor(rand() * since.length)];
         if (m2 !== m && first < target) hits[m2] = Math.round((target - first) * 100) / 100;
       }
       if (Object.keys(hits).length) bag[k.match.toLowerCase()] = hits;
@@ -275,7 +281,7 @@ const cards = previous.cards.map((c) => {
     nextAward: null,
     note: held ? held.note : (CONSIDERING_NOTE[c.id] || 'Evaluated in this sample portfolio.'),
   };
-  if (next.sub) next.sub = { ...next.sub, start: null };
+  if (next.sub) next.sub = { ...next.sub, start: (held && held.subStart) || null };
   return next;
 });
 const cardIds = new Set(cards.map((c) => c.id));
