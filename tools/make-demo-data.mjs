@@ -1,15 +1,16 @@
 // Regenerates the fabricated dataset baked into index.html.
 //
-// Every transaction, merchant, date and credit redemption this produces is
-// invented. Nothing here comes from a real statement, and the file is
-// deterministic: the same seed always yields the same dataset, so a rebuild
-// never silently changes what the demo shows.
+// The profile is a composite of an average 25-year-old US cardholder: roughly
+// $1,600/month of card spend, weighted toward groceries, dining, fuel and
+// subscriptions, with occasional travel. It is not modelled on anyone's real
+// statements -- merchants, amounts, dates and credit history are all invented,
+// and the run is deterministic, so the same seed always yields the same data.
 //
 //   node tools/make-demo-data.mjs
 //
 // Card names, annual fees, earn multipliers and credit structures are public
 // published product terms, kept so the demo demonstrates something real. The
-// holdings they imply (which cards are held, when they were opened) are not.
+// holdings they imply are invented.
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -31,102 +32,103 @@ const pick = (arr) => arr[Math.floor(rand() * arr.length)];
 const between = (lo, hi) => lo + rand() * (hi - lo);
 const money = (lo, hi) => Math.round(between(lo, hi) * 100) / 100;
 
-// -- invented merchants -----------------------------------------------------
-// National chains and generic names only: nothing that identifies a person.
-// Grouped by category because transactions carry a resolved `category`, and
-// the optimizer indexes a per-category table by it -- a null or off-list value
-// crashes the dashboard on load.
-const BY_CATEGORY = {
-  'Restaurants': [
-    ['SUBWAY #40218', 9, 18], ['FIVE GUYS 1180', 14, 34], ["WENDY'S #221", 8, 22],
-    ['TACO BELL #4417', 7, 19], ['POPEYES 11902', 9, 26], ['CHICK-FIL-A #0292', 10, 28],
-    ['PIZZA HUT 3310', 16, 42], ['THE CORNER TAVERN', 28, 96], ['RIVERSIDE GRILL', 34, 128],
-    ['HARBOR OYSTER BAR', 42, 165], ['TST* NORTHSIDE KITCHEN', 26, 88], ['SUSHI HOUSE 12', 30, 104],
-  ],
-  'Coffee Shops': [
-    ['STARBUCKS #11238', 4, 14], ['LOCAL COFFEE BAR', 4, 12], ["PJ'S COFFEE #18", 4, 13],
-  ],
-  'Food Delivery': [
-    ['DOORDASH*ORDER', 18, 62], ['GRUBHUB*ORDER', 16, 58], ['UBER EATS', 17, 60],
-  ],
-  'Groceries': [
-    ['WHOLE FOODS MKT 402', 38, 190], ["TRADER JOE'S #445", 32, 140], ['KROGER #2011', 44, 210],
-    ['COSTCO WHSE #1188', 85, 420], ['PUBLIX #3320', 30, 150],
-  ],
-  'Rideshare': [['UBER TRIP', 11, 58], ['LYFT *RIDE', 10, 52]],
-  'Airfare': [['SOUTHWEST AIRLINES', 118, 640], ['DELTA AIR LINES', 165, 880], ['UNITED AIRLINES', 152, 810]],
-  'Hotels': [
-    ['MARRIOTT BONVOY 4471', 165, 640], ['HILTON HOTELS RES', 148, 590],
-    ['HYATT PLACE 220', 132, 520], ['AIRBNB * HMQ4T2', 210, 980],
-  ],
-  'Other Travel': [
-    ['AMTRAK .COM', 48, 260], ['HERTZ RENT A CAR', 88, 420],
-    ['SP PLUS PARKING', 8, 46], ['EXPEDIA 7412', 190, 940],
-  ],
-  'Entertainment & Events': [
-    ['TICKETMASTER 8891', 55, 320], ['STUBHUB INC', 70, 380],
-    ['SEATGEEK EVENT', 62, 300], ['AMC CINEMA 1140', 14, 62],
-  ],
-  'Streaming & Software': [
-    ['NETFLIX.COM', 15.49, 24.99], ['SPOTIFY USA', 11.99, 19.99], ['OPENAI CHATGPT SUBSCR', 20, 20],
-    ['APPLE.COM/BILL', 2.99, 34.99], ['ADOBE *CREATIVE CLD', 22.99, 59.99],
-  ],
-  'Pets': [['PETCO #2214', 22, 110], ['CHEWY.COM', 34, 165], ['RIVERBEND VETERINARY', 78, 420]],
-  'Utilities': [['COX COMMUNICATIONS', 89, 165], ['AT&T *PAYMENT', 62, 145], ['CITY POWER ELECTRIC', 74, 260]],
-  'Insurance': [['PROGRESSIVE INSURANCE', 118, 235], ['GEICO AUTO PMT', 96, 210]],
-  'Car': [
-    ['VALVOLINE #1206', 62, 138], ['DISCOUNT TIRE 440', 120, 720],
-    ['AUTOZONE #9004', 18, 130], ['EXPRESS CAR WASH', 12, 34],
-  ],
-  'Gas': [
-    ['SHELL OIL 574123', 28, 82], ['CHEVRON #2218', 30, 86],
-    ['EXXON MOBIL 4471', 29, 84], ['CIRCLE K #5502', 26, 76],
-  ],
-  'Health': [
-    ['CVS PHARMACY #2011', 12, 96], ['WALGREENS #1146', 11, 88],
-    ['DENTAL ASSOCIATES', 95, 480], ['CITY MEDICAL CLINIC', 60, 340],
-  ],
-  'Business & Office': [
-    ['STAPLES #1180', 22, 180], ['OFFICE DEPOT 4412', 26, 210], ['FEDEX OFFICE 0221', 14, 120],
-    ['PRINTIFY.COM', 40, 320], ['GODADDY.COM', 12, 96],
-  ],
-  'Charity': [['GOFUNDME*CAMPAIGN', 25, 150]],
-  'Gifts': [['CALIFORNIA GIFT CO', 30, 140]],
-  'Online Shopping': [
-    ['AMAZON.COM*A12BC4D', 12, 240], ['AMZN MKTP US*7741', 10, 190], ['TARGET #1180', 24, 185],
-    ['WALMART.COM 8812', 20, 170], ['EBAY O*12-34567', 15, 130], ['ETSY.COM', 18, 120],
-  ],
+// -- the spending profile ---------------------------------------------------
+// Per category: an approximate monthly budget, and the merchants it is spent
+// at as [name, min, max]. Transactions carry a resolved `category` -- the
+// optimizer indexes a per-category table by it, and a null or off-list value
+// crashes the dashboard on load, so every merchant is declared under a
+// category the app already knows.
+//
+// Deliberately omits business, pet, charity and gift spending: those belong to
+// particular lives rather than an average one.
+const PROFILE = {
+  'Groceries': { monthly: 300, merchants: [
+    ['ALDI #4820', 22, 78], ['LIDL US 2204', 25, 84], ['SPROUTS FARMERS MKT', 30, 96],
+    ['SAFEWAY #1140', 28, 105], ['WEGMANS 0088', 34, 120],
+  ]},
+  'Restaurants': { monthly: 215, merchants: [
+    ['CHIPOTLE 1180', 11, 27], ['SWEETGREEN 0441', 13, 24], ['NOODLES & CO 212', 12, 26],
+    ['WINGSTOP 9021', 14, 38], ['SHAKE SHACK 0217', 13, 32], ['PHO NOODLE HOUSE', 16, 42],
+    ['TACO SHOP CANTINA', 15, 46], ['BRICK OVEN PIZZ CO', 18, 54], ['RAMEN BAR 33', 17, 44],
+  ]},
+  'Coffee Shops': { monthly: 46, merchants: [
+    ['DUTCH BROS 1182', 5, 11], ['CARIBOU COFFEE 44', 4, 10],
+    ['BLUE BOTTLE 0012', 5, 13], ['CAMPUS ROASTERS CO', 4, 9],
+  ]},
+  'Food Delivery': { monthly: 84, merchants: [
+    ['SEAMLESS*ORDER', 19, 46], ['GOPUFF DELIVERY', 12, 34], ['POSTMATES*ORDER', 18, 44],
+  ]},
+  'Gas': { monthly: 118, merchants: [
+    ['BP #44710', 26, 62], ['SUNOCO 2205', 24, 58], ['SPEEDWAY 11802', 25, 60],
+    ['QUIKTRIP 4423', 23, 56], ['WAWA 0881', 22, 54],
+  ]},
+  'Rideshare': { monthly: 38, merchants: [['LYFT *RIDE', 9, 31], ['VIA RIDE SHARE', 8, 26]]},
+  'Streaming & Software': { monthly: 54, merchants: [
+    ['HULU 1180', 9.99, 18.99], ['MAX.COM SUB', 9.99, 16.99], ['PARAMOUNT PLUS', 6.99, 12.99],
+    ['YOUTUBE PREMIUM', 13.99, 13.99], ['STEAM GAMES', 9.99, 59.99], ['DUOLINGO PLUS', 6.99, 12.99],
+  ]},
+  'Utilities': { monthly: 132, merchants: [
+    ['T-MOBILE PAYMENT', 55, 92], ['SPECTRUM INTERNET', 49, 88], ['CITY WATER DEPT', 24, 52],
+  ]},
+  'Online Shopping': { monthly: 172, merchants: [
+    ['UNIQLO US 0220', 24, 96], ['ADIDAS ONLINE US', 38, 145], ['ZARA ONLINE US', 30, 118],
+    ['BEST BUY 11802', 26, 240], ['IKEA 4420', 32, 190], ['WAYFAIR ORDER', 40, 210],
+  ]},
+  'Entertainment & Events': { monthly: 88, merchants: [
+    ['REGAL CINEMAS 0088', 13, 34], ['DAVE & BUSTERS 12', 22, 74],
+    ['TOPGOLF 0044', 28, 88], ['EVENTBRITE TICKETS', 24, 120],
+  ]},
+  'Health': { monthly: 62, merchants: [
+    ['RITE AID #2043', 9, 48], ['PLANET FITNESS', 10, 29],
+    ['URGENT CARE CLINIC', 45, 180], ['DENTAL GROUP 0012', 60, 210],
+  ]},
+  'Insurance': { monthly: 128, merchants: [['ALLSTATE AUTO PMT', 108, 158], ['NATIONWIDE INS PMT', 102, 149]]},
+  // Lumpy categories: a trip or a service costs what it costs, and does not
+  // divide neatly into a monthly budget. These fire on a per-month chance
+  // instead, which is what makes travel spend look like trips rather than a
+  // standing order.
+  'Car': { chance: 0.45, merchants: [
+    ['JIFFY LUBE 1182', 48, 96], ['MIDAS AUTO 0044', 60, 240], ['TOUCHLESS CAR WASH', 10, 22],
+  ]},
+  'Airfare': { chance: 0.24, merchants: [
+    ['JETBLUE AIRWAYS', 118, 340], ['FRONTIER AIRLINES', 68, 210], ['ALASKA AIRLINES', 135, 380],
+  ]},
+  'Hotels': { chance: 0.24, merchants: [
+    ['HOLIDAY INN EXPRESS', 104, 235], ['BEST WESTERN 2204', 88, 190], ['MOTEL 6 0118', 62, 130],
+  ]},
+  'Other Travel': { chance: 0.42, merchants: [
+    ['TURO CAR SHARE', 48, 165], ['GREYHOUND LINES', 32, 110], ['CITY TRANSIT PASS', 20, 70],
+  ]},
+  'Other': { monthly: 38, merchants: [
+    ['VENMO PAYMENT', 12, 68], ['CASH APP TRANSFER', 10, 60], ['WASH & FOLD LAUNDRY', 14, 38],
+  ]},
 };
 
-// [merchant, lo, hi, category]
-const MERCHANTS = Object.entries(BY_CATEGORY).flatMap(([cat, list]) =>
-  list.map(([name, lo, hi]) => [name, lo, hi, cat]),
-);
-
-
-
-const DAY = 86400000;
 const START = Date.UTC(2024, 5, 1);
 const END = Date.UTC(2026, 5, 30);
 const ymd = (t) => new Date(t).toISOString().slice(0, 10);
 const ym = (t) => new Date(t).toISOString().slice(0, 7);
 
-// Which cards carry spend, and roughly how much of it.
-const SPEND_WEIGHTS = { gold: 0.30, csr: 0.28, plat: 0.14, inkpref: 0.12, inkcash: 0.09, ventx: 0.07 };
+// Held cards and their share of spend. A first no-fee card, a dining and
+// grocery card, and one travel card is a realistic set at this age -- not an
+// eleven card premium portfolio.
+const SPEND_WEIGHTS = { freedom: 0.36, gold: 0.44, ventx: 0.20 };
 
-// Invented portfolio timeline. Replaces the real open/renewal history.
-const CARD_OVERRIDES = {
-  gold:      { status: 'held',        applied: '2024-05-14', renewal: '2027-05-31', nextAward: null, note: '4x on restaurants, food delivery and groceries. Sample portfolio card.' },
-  csr:       { status: 'held',        applied: '2024-08-02', renewal: '2027-08-31', nextAward: null, note: 'Travel and dining multipliers plus the annual travel credit.' },
-  plat:      { status: 'held',        applied: '2025-02-20', renewal: '2027-02-28', nextAward: null, note: 'High annual fee offset by statement credits rather than earn rate.' },
-  ink:       { status: 'considering', applied: null,         renewal: null,         nextAward: null, note: 'No-fee business card under evaluation in this sample portfolio.' },
-  inkcash:   { status: 'held',        applied: '2025-03-11', renewal: '2027-03-31', nextAward: null, note: '5x office supply and internet/cable/phone, 2x gas and dining, each capped annually.' },
-  inkpref:   { status: 'held',        applied: '2025-03-11', renewal: '2027-03-31', nextAward: null, note: '3x travel, shipping, internet/cable/phone and advertising, up to a combined annual cap.' },
-  ventx:     { status: 'dropped',     applied: '2024-07-09', renewal: '2026-08-31', nextAward: null, note: 'Dropped in this sample after the travel portal credit stopped clearing the fee.' },
-  green:     { status: 'considering', applied: null,         renewal: null,         nextAward: null, note: 'Lower-fee alternative in the same points currency.' },
-  freedom:   { status: 'considering', applied: null,         renewal: null,         nextAward: null, note: 'No-fee card in the same points ecosystem.' },
-  sw:        { status: 'considering', applied: null,         renewal: null,         nextAward: null, note: 'Airline card evaluated for its companion benefit.' },
-  xmjuch:    { status: 'considering', applied: null,         renewal: null,         nextAward: null, note: 'Lower-fee version of the same airline card.' },
+// Invented portfolio timeline. Replaces the real open and renewal history.
+const HELD = {
+  freedom: { applied: '2024-04-18', renewal: null,         note: 'First card in this sample portfolio. No annual fee.' },
+  gold:    { applied: '2025-01-22', renewal: '2027-01-31', note: '4x on restaurants, food delivery and groceries, the largest categories here.' },
+  ventx:   { applied: '2025-09-05', renewal: '2027-09-30', note: 'Travel card carrying the annual portal credit.' },
+};
+const CONSIDERING_NOTE = {
+  csr: 'Premium travel card, evaluated against its annual fee.',
+  plat: 'High annual fee offset by statement credits rather than earn rate.',
+  ink: 'Business card, not applicable to this sample profile.',
+  inkcash: 'Business card, not applicable to this sample profile.',
+  inkpref: 'Business card, not applicable to this sample profile.',
+  green: 'Lower-fee alternative in the same points currency.',
+  sw: 'Airline card evaluated for its companion benefit.',
+  xmjuch: 'Lower-fee version of the same airline card.',
 };
 
 // The card catalogue is declared a second time outside BAKED, via C(...) calls,
@@ -143,54 +145,75 @@ const SCRUB = [
   [/\/\/ pre-loaded from [^\n]*/g, '// fabricated demo data - see tools/make-demo-data.mjs'],
 ];
 
-// Cheap everyday purchases happen far more often than big-ticket ones, so
-// weight frequency inversely to price. Without this the demo shows a spend
-// profile no household actually has.
-const MERCHANT_POOL = MERCHANTS.flatMap((m) => {
-  const freq = Math.max(1, Math.min(40, Math.round(360 / m[2])));
-  return Array.from({ length: freq }, () => m);
-});
+function monthsBetween(a, b) {
+  const out = [];
+  const d = new Date(a);
+  d.setUTCDate(1);
+  while (d.getTime() <= b) {
+    out.push(new Date(d));
+    d.setUTCMonth(d.getUTCMonth() + 1);
+  }
+  return out;
+}
 
+// Spends each category's monthly budget down in realistically sized purchases,
+// rather than drawing transactions at random and hoping the totals look sane.
 function synthTransactions(cardIds) {
-  const weighted = [];
+  const wallet = [];
   for (const [id, w] of Object.entries(SPEND_WEIGHTS)) {
     if (!cardIds.has(id)) continue;
-    for (let i = 0; i < Math.round(w * 100); i++) weighted.push(id);
+    for (let i = 0; i < Math.round(w * 100); i++) wallet.push(id);
   }
-  if (!weighted.length) weighted.push(...cardIds);
+  if (!wallet.length) wallet.push(...cardIds);
 
   const out = [];
-  const total = 1900;
-  for (let i = 0; i < total; i++) {
-    const [merchant, lo, hi, category] = pick(MERCHANT_POOL);
-    const t = START + Math.floor(rand() * (END - START));
-    out.push({
-      id: 'demo-' + String(i + 1).padStart(4, '0'),
-      merchant,
-      category,
-      amount: money(lo, hi),
-      cardId: pick(weighted),
-      date: ymd(t),
-    });
+  let n = 0;
+  for (const month of monthsBetween(START, END)) {
+    const daysInMonth = new Date(Date.UTC(month.getUTCFullYear(), month.getUTCMonth() + 1, 0)).getUTCDate();
+    const add = (category, merchant, amount) => {
+      const day = 1 + Math.floor(rand() * daysInMonth);
+      out.push({
+        id: 'demo-' + String(++n).padStart(4, '0'),
+        merchant,
+        category,
+        amount,
+        cardId: pick(wallet),
+        date: ymd(Date.UTC(month.getUTCFullYear(), month.getUTCMonth(), day)),
+      });
+    };
+
+    for (const [category, spec] of Object.entries(PROFILE)) {
+      if (spec.chance !== undefined) {
+        if (rand() > spec.chance) continue;
+        const times = rand() < 0.25 ? 2 : 1; // trips tend to book in pairs
+        for (let k = 0; k < times; k++) {
+          const [merchant, lo, hi] = pick(spec.merchants);
+          add(category, merchant, money(lo, hi));
+        }
+        continue;
+      }
+      let budget = spec.monthly * between(0.7, 1.35);
+      let guard = 0;
+      while (budget > 0 && guard++ < 60) {
+        const [merchant, lo, hi] = pick(spec.merchants);
+        if (budget < lo * 0.6) break;
+        const amount = money(lo, Math.max(lo, Math.min(hi, budget)));
+        add(category, merchant, amount);
+        budget -= amount;
+      }
+    }
   }
   out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   return out;
 }
 
-// Plausible redemption history for each card's credits, so the credits view
-// has something to show. Invented, but consistent with each credit's cadence.
+// Plausible redemption history for each held card's credits, so the credits
+// view has something to show. Invented, consistent with each credit's cadence.
 function synthDetectedCredits(cards) {
-  const months = [];
-  for (let t = START; t <= END; ) {
-    months.push(ym(t));
-    const d = new Date(t);
-    d.setUTCMonth(d.getUTCMonth() + 1);
-    t = d.getTime();
-  }
-  const recent = months.slice(-14);
+  const recent = monthsBetween(START, END).map((d) => ym(d.getTime())).slice(-14);
   const out = {};
   for (const c of cards) {
-    if ((CARD_OVERRIDES[c.id] || {}).status === 'considering') continue;
+    if (!HELD[c.id]) continue;
     const bag = {};
     for (const k of c.credits || []) {
       if (!k.match) continue;
@@ -240,18 +263,25 @@ function extractBaked(src) {
 
 const src = readFileSync(INDEX, 'utf8');
 const { open, close, json } = extractBaked(src);
-const real = JSON.parse(json);
+const previous = JSON.parse(json);
 
-const cards = real.cards.map((c) => {
-  const o = CARD_OVERRIDES[c.id] || {};
-  const next = { ...c, ...o };
+const cards = previous.cards.map((c) => {
+  const held = HELD[c.id];
+  const next = {
+    ...c,
+    status: held ? 'held' : 'considering',
+    applied: held ? held.applied : null,
+    renewal: held ? held.renewal : null,
+    nextAward: null,
+    note: held ? held.note : (CONSIDERING_NOTE[c.id] || 'Evaluated in this sample portfolio.'),
+  };
   if (next.sub) next.sub = { ...next.sub, start: null };
   return next;
 });
 const cardIds = new Set(cards.map((c) => c.id));
 
 const fake = {
-  settings: real.settings,
+  settings: previous.settings,
   cards,
   transactions: synthTransactions(cardIds),
   _detectedCredits: synthDetectedCredits(cards),
@@ -262,9 +292,17 @@ let out = src.slice(0, open) + JSON.stringify(fake) + src.slice(close);
 for (const [pattern, replacement] of SCRUB) out = out.replace(pattern, replacement);
 writeFileSync(INDEX, out);
 
-const sum = fake.transactions.reduce((a, t) => a + t.amount, 0);
-console.log('transactions:', fake.transactions.length);
-console.log('distinct merchants:', new Set(fake.transactions.map((t) => t.merchant)).size);
-console.log('date range:', fake.transactions.at(-1).date, '->', fake.transactions[0].date);
-console.log('total spend: $' + sum.toFixed(2));
-console.log('cards:', fake.cards.length, '| with detected credits:', Object.keys(fake._detectedCredits).length);
+const tx = fake.transactions;
+const total = tx.reduce((a, t) => a + t.amount, 0);
+const months = monthsBetween(START, END).length;
+const byCat = {};
+for (const t of tx) byCat[t.category] = (byCat[t.category] || 0) + t.amount;
+console.log('transactions:', tx.length);
+console.log('distinct merchants:', new Set(tx.map((t) => t.merchant)).size);
+console.log('date range:', tx.at(-1).date, '->', tx[0].date);
+console.log('total: $' + total.toFixed(2), '| per month: $' + (total / months).toFixed(2));
+console.log('held cards:', cards.filter((c) => c.status === 'held').map((c) => c.name).join(', '));
+console.log('\nspend by category, $/month:');
+for (const [c, v] of Object.entries(byCat).sort((a, b) => b[1] - a[1])) {
+  console.log('  ' + c.padEnd(24) + (v / months).toFixed(0).padStart(6));
+}
