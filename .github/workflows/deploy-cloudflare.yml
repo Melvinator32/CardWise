@@ -1,0 +1,37 @@
+# Deploys CardWise to Cloudflare Workers (static assets) on every push to main.
+#
+# Requires two repo secrets:
+#   CLOUDFLARE_API_TOKEN   - API token with the "Edit Cloudflare Workers" template
+#                            (Account: Workers Scripts: Edit, Account Settings: Read).
+#   CLOUDFLARE_ACCOUNT_ID  - the account ID from the Cloudflare dashboard sidebar.
+#
+# Without those secrets this workflow fails; nothing else in the repo depends on it.
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a newer push supersedes an in-flight run.
+concurrency:
+  group: cloudflare-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage static assets
+        run: |
+          mkdir -p dist
+          cp index.html _headers dist/
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

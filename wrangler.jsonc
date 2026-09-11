@@ -1,0 +1,17 @@
+{
+  "name": "cardwise",
+  "compatibility_date": "2026-09-01",
+
+  // CardWise has no build step: the workflow copies index.html and _headers
+  // into dist/ and Wrangler uploads that directory as static assets. Keeping a
+  // dedicated directory means README.md, tools/ and .github/ are never served.
+  "assets": {
+    "directory": "./dist",
+    // Every path serves index.html, so deep links into the dashboard work.
+    "not_found_handling": "single-page-application"
+  },
+
+  "observability": {
+    "enabled": true
+  }
+}

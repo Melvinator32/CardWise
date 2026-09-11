@@ -31,6 +31,31 @@ It rewrites the `BAKED` object inside `index.html` in place. The seed is fixed,
 so the output is identical every run unless you change it.
 
 ## Deployment
+
+### Portfolio
 Pushing to `main` rebuilds the demo at
 https://jamesmcknight.me/demos/rewards-ledger/ — see
 `.github/workflows/notify-portfolio.yml`.
+
+### Cloudflare
+Pushing to `main` also deploys to Cloudflare Workers static assets — see
+`wrangler.jsonc` and `.github/workflows/deploy-cloudflare.yml`. The workflow
+copies `index.html` and `_headers` into `dist/` and runs `wrangler deploy`;
+there is still no build step.
+
+One-time setup:
+
+1. In the Cloudflare dashboard, create an API token from the **Edit Cloudflare
+   Workers** template.
+2. Copy the account ID from the dashboard sidebar.
+3. Add both as repo secrets under Settings → Secrets and variables → Actions:
+   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+
+The first deploy publishes to `https://cardwise.<your-subdomain>.workers.dev`.
+To attach a custom domain, add a `routes` entry to `wrangler.jsonc` or bind the
+domain to the Worker in the dashboard.
+
+To deploy by hand:
+
+    mkdir -p dist && cp index.html _headers dist/
+    npx wrangler deploy
