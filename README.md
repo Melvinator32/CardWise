@@ -41,11 +41,15 @@ https://jamesmcknight.me/demos/rewards-ledger/ — see
 The demo is also deployed to Cloudflare Workers static assets at
 https://cardwise.jrmcknight08.workers.dev — see `wrangler.jsonc`.
 
-Deploys are manual. From a checkout with `wrangler` authenticated
-(`npx wrangler login`):
+Cloudflare Workers Builds is connected to this repo: every push builds, and
+pushes to `main` deploy to production. The project's build command (set in the
+Cloudflare dashboard under the Worker's Settings → Build) must be
 
     mkdir -p dist && cp index.html _headers dist/
-    npx wrangler deploy
+
+because `dist/` is gitignored and nothing else creates it. To deploy by hand
+instead, run the same command and then `npx wrangler deploy` from a checkout
+with `wrangler` authenticated (`npx wrangler login`).
 
 ### Password
 
@@ -65,4 +69,4 @@ readable. To change the password there, replace `LOCK_HASH` with the hex
 SHA-256 of the new one.
 
 `dist/` exists only so `README.md`, `tools/` and `.github/` are never served;
-there is still no build step.
+the build command above just copies the two files into it.
