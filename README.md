@@ -42,14 +42,10 @@ The demo is also deployed to Cloudflare Workers static assets at
 https://cardwise.jrmcknight08.workers.dev — see `wrangler.jsonc`.
 
 Cloudflare Workers Builds is connected to this repo: every push builds, and
-pushes to `main` deploy to production. The project's build command (set in the
-Cloudflare dashboard under the Worker's Settings → Build) must be
-
-    mkdir -p dist && cp index.html _headers dist/
-
-because `dist/` is gitignored and nothing else creates it. To deploy by hand
-instead, run the same command and then `npx wrangler deploy` from a checkout
-with `wrangler` authenticated (`npx wrangler login`).
+pushes to `main` deploy to production. `dist/` is gitignored; the `build`
+command in `wrangler.jsonc` recreates it on every `wrangler deploy`, so the
+dashboard needs no build command. To deploy by hand, run `npx wrangler deploy`
+from a checkout with `wrangler` authenticated (`npx wrangler login`).
 
 ### Password
 
@@ -59,7 +55,9 @@ whose password matches the `APP_PASSWORD` secret. Set or change it with
 
     npx wrangler secret put APP_PASSWORD
 
-With no secret set, the Worker serves nothing (503). For `wrangler dev`, put
+It must be a runtime secret (the Worker's Settings → Variables and Secrets),
+not a Workers Builds build variable, which the Worker never sees. With no
+secret set, the Worker serves nothing (503). For `wrangler dev`, put
 `APP_PASSWORD=...` in a `.dev.vars` file, which is gitignored.
 
 `index.html` also has an in-page lock screen that checks a SHA-256 hash of the
@@ -69,4 +67,4 @@ readable. To change the password there, replace `LOCK_HASH` with the hex
 SHA-256 of the new one.
 
 `dist/` exists only so `README.md`, `tools/` and `.github/` are never served;
-the build command above just copies the two files into it.
+the `build` command just copies the two files into it.
