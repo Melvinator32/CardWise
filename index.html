@@ -249,8 +249,26 @@
 <link rel="icon" type="image/png" href="/bonsai-logo.png">
 <link rel="apple-touch-icon" href="/bonsai-logo.png">
 <style>.app-bonsai{width:48px;height:48px;object-fit:contain;flex-shrink:0;vertical-align:middle;background:#E1E2D8;border-radius:10px;padding:4px}</style>
+<style>
+  body.locked .wrap{display:none}
+  .lock{display:none;min-height:100vh;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+  body.locked .lock{display:flex}
+  .lock form{background:#fff;border-radius:16px;padding:28px 24px;width:100%;max-width:340px;box-shadow:0 10px 40px rgba(0,80,90,.12);border-top:4px solid var(--darkTeal)}
+  .lock h2{font-family:var(--serif);margin:0 0 4px;color:var(--darkTeal)}
+  .lock p{margin:0 0 16px;font-size:13px;opacity:.7}
+  .lock input{width:100%;box-sizing:border-box;padding:10px 12px;border:1px solid var(--lightGray);border-radius:10px;font:inherit;margin-bottom:10px}
+  .lock input:focus{outline:2px solid var(--cyanTeal);border-color:transparent}
+  .lock button{width:100%;padding:10px;border:0;border-radius:10px;background:var(--darkTeal);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+  .lock .err{color:var(--warn);font-size:13px;min-height:18px;margin:0 0 6px}
+</style>
 </head>
-<body>
+<body class="locked">
+<div class="lock"><form id="lockform" autocomplete="off">
+  <h2>CardWise</h2><p>Enter the password to open your dashboard.</p>
+  <input id="lockpw" type="password" placeholder="Password" aria-label="Password" autofocus>
+  <div class="err" id="lockerr" role="alert"></div>
+  <button type="submit">Unlock</button>
+</form></div>
 <div class="wrap">
   <header>
     <div class="brand" style="position:relative;padding-left:62px"><img class="app-bonsai" style="position:absolute;left:0;top:0" src="/bonsai-logo.png" alt="Bonsai logo" width="48" height="48"><h1>CardWise - Credit Card &amp; Spend Dashboard</h1><span class="sub">value tracking · credit reminders · card strategy</span></div>
@@ -1747,7 +1765,25 @@ function resetAll(){ if(!confirm("Erase all data and reset cards to defaults?"))
   DATA=seed(); persist(); }
 
 // ===========================================================================
-(async function(){ await load(); if(YEAR===null) YEAR=availableYears()[0]; renderYear(); renderKpis(); renderTabs(); renderPanel(); })();
+// Lock screen. Only the SHA-256 of the password is stored here, but this is a
+// deterrent, not security: the page source is readable. Real protection is the
+// Worker's server-side check (src/worker.js). Unlock lasts for the tab session.
+const LOCK_HASH="2a7dfeb2f2b018e5dae04497c0a281e7b22403057b91679046c9da52433894e1";
+async function sha256(t){ const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join(""); }
+function unlock(){
+  return new Promise(resolve=>{
+    const done=()=>{ document.body.classList.remove("locked"); resolve(); };
+    try{ if(sessionStorage.getItem("cardwise-unlocked")===LOCK_HASH) return done(); }catch(e){}
+    const f=document.getElementById("lockform"), pw=document.getElementById("lockpw"), err=document.getElementById("lockerr");
+    pw.focus();
+    f.addEventListener("submit",async e=>{ e.preventDefault();
+      if(await sha256(pw.value)!==LOCK_HASH){ err.textContent="Incorrect password."; pw.select(); return; }
+      try{ sessionStorage.setItem("cardwise-unlocked",LOCK_HASH); }catch(e){}
+      done(); });
+  });
+}
+(async function(){ await unlock(); await load(); if(YEAR===null) YEAR=availableYears()[0]; renderYear(); renderKpis(); renderTabs(); renderPanel(); })();
 </script>
 </body>
 </html>
