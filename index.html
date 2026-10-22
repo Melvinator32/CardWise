@@ -1646,7 +1646,13 @@ function detectDelim(text){ const probe=text.split(/\r?\n/).slice(0,6).join("\n"
   return (tabs>0 && tabs>=commas) ? "\t" : ","; }
 function normDate(s){ s=(s||"").trim(); if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);
   const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/); if(m){let[_,mo,d,y]=m;if(y.length===2)y="20"+y;
-    return `${y}-${mo.padStart(2,"0")}-${d.padStart(2,"0")}`;} return new Date().toISOString().slice(0,10); }
+    return `${y}-${mo.padStart(2,"0")}-${d.padStart(2,"0")}`;}
+  const ymd=s.match(/^(\d{4})[\/.](\d{1,2})[\/.](\d{1,2})/); if(ymd) return `${ymd[1]}-${ymd[2].padStart(2,"0")}-${ymd[3].padStart(2,"0")}`;
+  const t=new Date(s); if(!isNaN(t)) return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,"0")}-${String(t.getDate()).padStart(2,"0")}`; // "Oct 22, 2026"
+  return new Date().toISOString().slice(0,10); }
+// Dedup key for an imported line. Merchant is case/whitespace-normalized so the
+// same charge exported twice (or pasted from a sheet vs. a .csv) still matches.
+const txKey=(date,merchant,amt,cardId)=>`${date}|${(merchant||"").toLowerCase().replace(/\s+/g," ").trim()}|${(+amt).toFixed(2)}|${cardId}`;
 function importCsv(){
   const cardId=val("csv-card"), msg=document.getElementById("csv-msg");
   const raw=val("csv-text").trim(); if(!raw){ if(msg)msg.textContent="Paste rows first."; return; }
@@ -1682,12 +1688,21 @@ function importCsv(){
   // repeated charges (two identical same-day rides) are kept. We add a row only
   // when its Nth occurrence in this file exceeds how many we already store.
   const existCount={};
-  DATA.transactions.forEach(t=>{ const k=`${t.date}|${t.merchant}|${t.amount.toFixed(2)}|${t.cardId}`; existCount[k]=(existCount[k]||0)+1; });
+  DATA.transactions.forEach(t=>{ const k=txKey(t.date,t.merchant,t.amount,t.cardId); existCount[k]=(existCount[k]||0)+1; });
   const seen={};
   let added=0,pay=0,dup=0;
   DATA._detectedCredits=DATA._detectedCredits||{};
   const detected=DATA._detectedCredits[cardId]||{};   // { keyword: { 'YYYY-MM': amount } }
-  const addCredit=(desc,ym,amt)=>{ const k=desc.toLowerCase().replace(/\s+/g,' ').trim(); detected[k]=detected[k]||{}; detected[k][ym]=(detected[k][ym]||0)+amt; };
+  // Credit lines get the same occurrence-based dedup, tracked in a per-card ledger
+  // since detected credits are stored only as monthly sums.
+  DATA._creditLines=DATA._creditLines||{};
+  const creditLines=DATA._creditLines[cardId]=DATA._creditLines[cardId]||{};
+  const creditSeen={};
+  const addCredit=(desc,ym,amt,rawDate)=>{ const k=desc.toLowerCase().replace(/\s+/g,' ').trim();
+    const lk=`${normDate(rawDate)}|${k}|${amt.toFixed(2)}`; creditSeen[lk]=(creditSeen[lk]||0)+1;
+    if(creditSeen[lk]<=(creditLines[lk]||0)){ dup++; return; }
+    creditLines[lk]=creditSeen[lk];
+    detected[k]=detected[k]||{}; detected[k][ym]=(detected[k][ym]||0)+amt; };
   rows.forEach(c=>{
     const desc=c[si]||""; let amt=parseFloat(String(c[ai]).replace(/[^0-9.\-]/g,"")); if(isNaN(amt))return;
     const ym=normDate(c[di]).slice(0,7);
@@ -1695,13 +1710,13 @@ function importCsv(){
     if(issuer==="chase"){
       const type=c[ti];
       // Chase statement credits post as positive "Adjustment" lines (TRAVEL CREDIT, DINING CREDIT) or a DashPass "Return"
-      if(amt>0){ if((type==="Adjustment" && /credit/i.test(desc)) || /dashpass/i.test(desc)){ addCredit(desc,ym,amt); } pay++; return; }
+      if(amt>0){ if((type==="Adjustment" && /credit/i.test(desc)) || /dashpass/i.test(desc)){ addCredit(desc,ym,amt,c[di]); } pay++; return; }
       if(["Payment","Return","Adjustment","Cash Advance","Fee","Reversal"].includes(type)){pay++;return;}
       if(!(amt<0)){pay++;return;}
       amt=-amt; cat=categorize(desc); if(cat==="Other"&&CHASE_MAP[c[ci]])cat=CHASE_MAP[c[ci]];
     } else if(issuer==="amex"){
       if(PAY.test(desc)){pay++;return;}
-      if(amt<0){ if(/credit/i.test(desc)){addCredit(desc,ym,-amt);} else pay++; return; }
+      if(amt<0){ if(/credit/i.test(desc)){addCredit(desc,ym,-amt,c[di]);} else pay++; return; }
       cat=categorize(desc);
     } else if(issuer==="capitalone"){
       // separate Debit/Credit columns: amt was read from the Debit column, so charges are amt>0.
@@ -1709,13 +1724,13 @@ function importCsv(){
       cat=categorize(desc); if(cat==="Other"&&ci>=0&&CAPONE_MAP[c[ci]])cat=CAPONE_MAP[c[ci]];
     } else {
       if(PAY.test(desc)){pay++;return;}
-      if(amt<0){ if(/credit/i.test(desc)){addCredit(desc,ym,-amt);} return; }
+      if(amt<0){ if(/credit/i.test(desc)){addCredit(desc,ym,-amt,c[di]);} return; }
       cat=categorize(desc);
     }
     if(amt<=0)return;
     const merchant=desc.replace(/\s{2,}.*/,'').trim()||"(imported)";
     const date=normDate(c[di]);
-    const s=`${date}|${merchant}|${amt.toFixed(2)}|${cardId}`;
+    const s=txKey(date,merchant,amt,cardId);
     seen[s]=(seen[s]||0)+1;
     if(seen[s] <= (existCount[s]||0)){ dup++; return; }   // this occurrence already stored
     DATA.transactions.push({id:"t"+Math.random().toString(36).slice(2,9),merchant,category:cat,amount:amt,cardId,date});
