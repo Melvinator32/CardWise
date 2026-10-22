@@ -41,11 +41,32 @@ https://jamesmcknight.me/demos/rewards-ledger/ — see
 The demo is also deployed to Cloudflare Workers static assets at
 https://cardwise.jrmcknight08.workers.dev — see `wrangler.jsonc`.
 
-Deploys are manual. From a checkout with `wrangler` authenticated
-(`npx wrangler login`):
+Cloudflare Workers Builds is connected to this repo: every push builds, and
+pushes to `main` deploy to production. The project's build command (set in the
+Cloudflare dashboard under the Worker's Settings → Build) must be
 
     mkdir -p dist && cp index.html _headers dist/
-    npx wrangler deploy
+
+because `dist/` is gitignored and nothing else creates it. To deploy by hand
+instead, run the same command and then `npx wrangler deploy` from a checkout
+with `wrangler` authenticated (`npx wrangler login`).
+
+### Password
+
+The Cloudflare deployment is password-protected server-side: `src/worker.js`
+runs before every request and requires HTTP Basic credentials (any username)
+whose password matches the `APP_PASSWORD` secret. Set or change it with
+
+    npx wrangler secret put APP_PASSWORD
+
+With no secret set, the Worker serves nothing (503). For `wrangler dev`, put
+`APP_PASSWORD=...` in a `.dev.vars` file, which is gitignored.
+
+`index.html` also has an in-page lock screen that checks a SHA-256 hash of the
+password (`LOCK_HASH`). It applies everywhere the page is served, including the
+portfolio demo, but it only deters casual visitors because the page source is
+readable. To change the password there, replace `LOCK_HASH` with the hex
+SHA-256 of the new one.
 
 `dist/` exists only so `README.md`, `tools/` and `.github/` are never served;
-there is still no build step.
+the build command above just copies the two files into it.
