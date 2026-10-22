@@ -5,6 +5,10 @@
   // src/worker.js runs before every asset and requires the APP_PASSWORD secret.
   "main": "src/worker.js",
 
+  // Keep variables set in the Cloudflare dashboard (APP_PASSWORD) across
+  // deploys; without this, every `wrangler deploy` deletes them.
+  "keep_vars": true,
+
   // Wrangler runs this before every deploy (and `wrangler dev`), so dist/ exists
   // however the deploy is started, Workers Builds included.
   "build": {
