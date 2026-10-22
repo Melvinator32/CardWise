@@ -122,6 +122,7 @@ const HELD = {
   gold:    { applied: '2025-01-22', renewal: '2027-01-31', note: '4x on restaurants, food delivery and groceries, the largest categories here.' },
   ventx:   { applied: '2025-09-05', renewal: '2027-09-30', note: 'Travel card carrying the annual portal credit.' },
   csr:     { applied: '2026-04-10', renewal: '2027-04-30', subStart: '2026-04-10', note: 'Opened most recently in this sample; its signup bonus is still in progress.' },
+  swpri:   { applied: '2026-10-22', renewal: '2027-10-31', subStart: '2026-10-22', note: '4x Southwest purchases, 2x gas & restaurants, 1x else. 7,500 anniversary pts, first checked bag free (you + up to 8 companions), preferred seat at booking, 25% back inflight, 10k Companion Pass boost/yr, 2,500 A-List TQPs per $5k spend.' },
   plat:    { applied: '2025-11-08', renewal: '2027-11-30', note: 'Weak earn rate at this spend level; the case for it rests entirely on clearing the statement credits.' },
 };
 const CONSIDERING_NOTE = {
