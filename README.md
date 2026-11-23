@@ -55,8 +55,10 @@ whose password matches the `APP_PASSWORD` secret. Set or change it with
 
     npx wrangler secret put APP_PASSWORD
 
-It must be a runtime secret (the Worker's Settings → Variables and Secrets),
-not a Workers Builds build variable, which the Worker never sees. With no
+Set it under the Worker's Settings → Variables and Secrets, not as a Workers
+Builds build variable, which the Worker never sees. `keep_vars` in
+`wrangler.jsonc` stops deploys from deleting it if it is saved as a plain
+variable rather than a secret. With no
 secret set, the Worker serves nothing (503). For `wrangler dev`, put
 `APP_PASSWORD=...` in a `.dev.vars` file, which is gitignored.
 
